@@ -2,7 +2,7 @@
 set -euo pipefail
 
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-version="${1:-0.1.1-1}"
+version="${1:-0.1.2-1}"
 architecture="$(dpkg --print-architecture)"
 
 if [[ "${architecture}" != "amd64" ]]; then

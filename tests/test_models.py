@@ -41,6 +41,18 @@ class BluetoothDeviceTests(unittest.TestCase):
         self.assertFalse(ready)
         self.assertTrue(detail)
 
+    def test_inotify_probe_reserves_requested_headroom(self):
+        fake_libc = mock.Mock()
+        fake_libc.inotify_init1.return_value = 7
+        fake_libc.inotify_add_watch.side_effect = range(4)
+        with tempfile.TemporaryDirectory() as directory, \
+                mock.patch("nextsound.health.ctypes.CDLL", return_value=fake_libc), \
+                mock.patch("nextsound.health.os.close"):
+            ready, detail = inotify_watch_available(directory, required_watches=4)
+
+        self.assertTrue(ready, detail)
+        self.assertEqual(fake_libc.inotify_add_watch.call_count, 4)
+
     def test_audio_source_is_accepted_case_insensitively(self):
         device = BluetoothDevice("/device", "AA:BB", "Phone", paired=True, uuids=(AUDIO_SOURCE_UUID.upper(),))
         self.assertTrue(device.can_stream_audio)

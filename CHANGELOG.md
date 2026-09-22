@@ -2,6 +2,13 @@
 
 Mọi thay đổi đáng chú ý của NextSound được ghi lại tại đây. Dự án tuân theo [Semantic Versioning](https://semver.org/).
 
+## [0.1.2] - 2026-09-22
+
+### Fixed
+
+- Kiểm tra tối thiểu 64 inotify watches dự phòng trước khi restart WirePlumber.
+- Tránh trường hợp phép thử một watch thành công nhưng WirePlumber vẫn không đủ tài nguyên để kích hoạt ALSA/BlueZ.
+
 ## [0.1.1] - 2026-09-22
 
 ### Fixed
@@ -33,5 +40,6 @@ Mọi thay đổi đáng chú ý của NextSound được ghi lại tại đây.
 - Trạng thái UI bị kẹt sau khi BlueZ transport biến mất.
 - Hoàn tác cấu hình khi WirePlumber restart thất bại.
 
+[0.1.2]: https://github.com/namnguyenit/NextSound/releases/tag/v0.1.2
 [0.1.1]: https://github.com/namnguyenit/NextSound/releases/tag/v0.1.1
 [0.1.0]: https://github.com/namnguyenit/NextSound/releases/tag/v0.1.0

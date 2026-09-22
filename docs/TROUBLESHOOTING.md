@@ -33,4 +33,4 @@ bluetoothctl --version
 nextsound-doctor
 ```
 
-Gói `.deb` v0.1.1 chỉ hỗ trợ PipeWire 0.3.48/WirePlumber 0.4 trên Ubuntu 22.04 amd64.
+Gói `.deb` v0.1.2 chỉ hỗ trợ PipeWire 0.3.48/WirePlumber 0.4 trên Ubuntu 22.04 amd64.
