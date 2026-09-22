@@ -8,10 +8,39 @@ from unittest import mock
 from nextsound.audio import AudioBackend, _percent_from_volume
 from nextsound.backend import BluezBackend, transport_codec_details, transport_codec_name
 from nextsound.constants import AUDIO_SINK_UUID, AUDIO_SOURCE_UUID, TRANSPORT_IFACE
+from nextsound.doctor import audio_graph_ready
+from nextsound.health import inotify_watch_available
 from nextsound.models import BluetoothDevice, device_from_properties
 
 
 class BluetoothDeviceTests(unittest.TestCase):
+    def test_packaged_runtime_is_scanned_for_codecs(self):
+        with mock.patch("nextsound.audio.glob.glob", return_value=[]) as globber:
+            AudioBackend._codec_plugin_paths()
+
+        patterns = [call.args[0] for call in globber.call_args_list]
+        self.assertIn(
+            "/opt/nextsound/runtime/spa-0.2/bluez5/libspa-codec-bluez5-*.so",
+            patterns,
+        )
+
+    def test_packaged_aac_receiver_marker_is_recognized(self):
+        markers = AudioBackend._aac_receiver_markers()
+        self.assertIn(Path("/opt/nextsound/runtime/aac-receiver-0.3.48"), markers)
+
+    def test_audio_graph_rejects_missing_cards(self):
+        result = subprocess.CompletedProcess([], 0, stdout="", stderr="")
+        with mock.patch("nextsound.doctor.subprocess.run", return_value=result):
+            ready, detail = audio_graph_ready()
+        self.assertFalse(ready)
+        self.assertIn("Dummy Output", detail)
+
+    def test_inotify_probe_reports_failure_for_missing_path(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ready, detail = inotify_watch_available(Path(directory) / "missing")
+        self.assertFalse(ready)
+        self.assertTrue(detail)
+
     def test_audio_source_is_accepted_case_insensitively(self):
         device = BluetoothDevice("/device", "AA:BB", "Phone", paired=True, uuids=(AUDIO_SOURCE_UUID.upper(),))
         self.assertTrue(device.can_stream_audio)
@@ -86,6 +115,10 @@ class BluetoothDeviceTests(unittest.TestCase):
                     backend,
                     "available_bluetooth_codecs",
                     return_value={"sbc", "sbc_xq", "aac", "ldac", "faststream"},
+                ), \
+                mock.patch(
+                    "nextsound.audio.inotify_watch_available",
+                    return_value=(True, "còn dung lượng"),
                 ), \
                 mock.patch("nextsound.audio.subprocess.run"):
             backend.set_codec_preference("SBC")
@@ -174,6 +207,10 @@ class BluetoothDeviceTests(unittest.TestCase):
                         backend, "available_bluetooth_codecs", return_value={"sbc", "aac"}
                     ), \
                     mock.patch(
+                        "nextsound.audio.inotify_watch_available",
+                        return_value=(True, "còn dung lượng"),
+                    ), \
+                    mock.patch(
                         "nextsound.audio.subprocess.run",
                         side_effect=[failure, subprocess.CompletedProcess([], 0)],
                     ):
@@ -182,6 +219,21 @@ class BluetoothDeviceTests(unittest.TestCase):
 
             self.assertEqual(config.read_text(encoding="utf-8"), "old config\n")
             self.assertEqual(state.read_text(encoding="utf-8"), "AAC\n")
+
+    def test_codec_change_is_blocked_before_restart_when_inotify_is_exhausted(self):
+        backend = AudioBackend()
+        with tempfile.TemporaryDirectory() as directory, \
+                mock.patch("nextsound.audio.Path.home", return_value=Path(directory)), \
+                mock.patch.object(backend, "receiver_codec_available", return_value=True), \
+                mock.patch(
+                    "nextsound.audio.inotify_watch_available",
+                    return_value=(False, "đã dùng hết inotify watches"),
+                ), \
+                mock.patch("nextsound.audio.subprocess.run") as restart:
+            with self.assertRaisesRegex(RuntimeError, "Đóng bớt VS Code/IDE"):
+                backend.set_codec_preference("AAC")
+
+        restart.assert_not_called()
 
     def test_bluez_transport_filter_keeps_local_sink_and_ignores_headset(self):
         device_path = "/org/bluez/hci0/dev_AA_BB"

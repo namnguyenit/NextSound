@@ -10,10 +10,17 @@ for runtime_dir in /run/user/[0-9]*; do
         XDG_RUNTIME_DIR="$runtime_dir" \
         DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" \
         systemctl --user daemon-reload >/dev/null 2>&1 || true
-    runuser -u "$user" -- env \
-        XDG_RUNTIME_DIR="$runtime_dir" \
-        DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" \
-        systemctl --user try-restart wireplumber >/dev/null 2>&1 || true
+    if runuser -u "$user" -- env \
+        PYTHONPATH=/opt/nextsound/app \
+        /usr/bin/python3 -c 'from nextsound.health import inotify_watch_available; raise SystemExit(0 if inotify_watch_available()[0] else 1)'; then
+        runuser -u "$user" -- env \
+            XDG_RUNTIME_DIR="$runtime_dir" \
+            DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" \
+            systemctl --user try-restart wireplumber >/dev/null 2>&1 || true
+    else
+        echo "NextSound: bỏ qua restart WirePlumber cho $user vì đã cạn inotify watches."
+        echo "Đóng bớt IDE rồi chạy: systemctl --user restart wireplumber"
+    fi
 done
 
 echo "NextSound đã được cài. Đăng xuất/đăng nhập lại nếu Audio Sink chưa xuất hiện."

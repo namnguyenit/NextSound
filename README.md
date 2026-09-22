@@ -35,7 +35,7 @@ NextSound cung cấp trải nghiệm tương tự Bluetooth Audio Receiver trên
 Release dựng sẵn hiện hỗ trợ **Ubuntu 22.04 x86_64/amd64**, PipeWire 0.3.48 và WirePlumber 0.4. Gói đã chứa backend PipeWire đã vá, AAC decoder, LDAC decoder và giấy phép đi kèm; APT tự cài các thư viện hệ thống còn lại.
 
 ```bash
-sudo apt install ./nextsound_0.1.0-1_amd64.deb
+sudo apt install ./nextsound_0.1.1-1_amd64.deb
 systemctl --user daemon-reload
 systemctl --user restart wireplumber
 ```

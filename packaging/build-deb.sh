@@ -2,7 +2,7 @@
 set -euo pipefail
 
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-version="${1:-0.1.0-1}"
+version="${1:-0.1.1-1}"
 architecture="$(dpkg --print-architecture)"
 
 if [[ "${architecture}" != "amd64" ]]; then
@@ -78,6 +78,10 @@ install -m644 "${project_dir}/data/icons/io.github.namnguyenit.NextSound.svg" \
     "${package_root}/usr/share/icons/hicolor/scalable/apps/io.github.namnguyenit.NextSound.svg"
 
 cp -a "${runtime_source}/." "${package_root}/opt/nextsound/runtime/"
+install -m644 "${project_dir}/data/aac-receiver-0.3.48" \
+    "${package_root}/opt/nextsound/runtime/aac-receiver-0.3.48"
+install -m644 "${project_dir}/data/ldac-receiver-pipewire-1.6.0" \
+    "${package_root}/opt/nextsound/runtime/ldac-receiver-pipewire-1.6.0"
 for spa_factory in aec alsa audioconvert audiomixer audiotestsrc control support test v4l2 videoconvert videotestsrc volume; do
     ln -s "/usr/lib/x86_64-linux-gnu/spa-0.2/${spa_factory}" \
         "${package_root}/opt/nextsound/runtime/spa-0.2/${spa_factory}"

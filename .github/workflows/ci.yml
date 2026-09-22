@@ -36,8 +36,8 @@ jobs:
 
       - name: Inspect Debian package
         run: |
-          dpkg-deb --info dist/nextsound_0.1.0-1_amd64.deb
-          dpkg-deb --contents dist/nextsound_0.1.0-1_amd64.deb
+          dpkg-deb --info dist/nextsound_0.1.1-1_amd64.deb
+          dpkg-deb --contents dist/nextsound_0.1.1-1_amd64.deb
           (cd dist && sha256sum --check SHA256SUMS)
 
       - name: Upload package artifact
@@ -45,5 +45,5 @@ jobs:
         with:
           name: nextsound-debian-amd64
           path: |
-            dist/nextsound_0.1.0-1_amd64.deb
+            dist/nextsound_0.1.1-1_amd64.deb
             dist/SHA256SUMS

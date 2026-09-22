@@ -8,6 +8,7 @@ import dbus
 
 from .audio import AudioBackend
 from .constants import ADAPTER_IFACE, AUDIO_SINK_UUID, BLUEZ_SERVICE, OBJECT_MANAGER_IFACE
+from .health import inotify_watch_available
 
 
 def command_ok(command: str) -> bool:
@@ -46,18 +47,52 @@ def bluez_receiver_ready() -> tuple[bool, str]:
         return False, str(error)
 
 
+def audio_graph_ready() -> tuple[bool, str]:
+    try:
+        completed = subprocess.run(
+            ["pactl", "list", "short", "cards"],
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=3,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        return False, str(error)
+    cards = [line for line in completed.stdout.splitlines() if line.strip()]
+    if not cards:
+        return False, "không có card; PipeWire có thể chỉ còn Dummy Output"
+    return True, f"{len(cards)} card âm thanh"
+
+
 def main() -> int:
+    inotify_ok, inotify_detail = inotify_watch_available()
+    graph_ok, graph_detail = audio_graph_ready()
     checks = [
         ("bluetoothctl", command_ok("bluetoothctl"), "gói bluez"),
         ("pactl", command_ok("pactl"), "gói pipewire-pulse hoặc pulseaudio-utils"),
         ("BlueZ service", service_active("bluetooth"), "sudo systemctl enable --now bluetooth"),
         ("PipeWire", service_active("pipewire", user=True), "systemctl --user enable --now pipewire"),
         ("WirePlumber", service_active("wireplumber", user=True), "systemctl --user enable --now wireplumber"),
+        (
+            "Inotify capacity",
+            inotify_ok,
+            "Đóng bớt VS Code/IDE rồi chạy: systemctl --user restart wireplumber",
+        ),
+        (
+            "Audio graph",
+            graph_ok,
+            "Giải phóng inotify watches rồi chạy: systemctl --user restart wireplumber",
+        ),
     ]
     failed = False
     print("NextSound system check\n")
     for label, ok, hint in checks:
         print(f"[{'OK' if ok else 'FAIL'}] {label}")
+        if label == "Inotify capacity":
+            print(f"       {inotify_detail}")
+        elif label == "Audio graph":
+            print(f"       {graph_detail}")
         if not ok:
             failed = True
             print(f"       Gợi ý: {hint}")

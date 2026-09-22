@@ -4,7 +4,7 @@ Section: sound
 Priority: optional
 Architecture: amd64
 Maintainer: Made by TrungCao <namnguyenit@users.noreply.github.com>
-Depends: python3 (>= 3.10), python3-gi, python3-dbus, gir1.2-gtk-4.0, gir1.2-adw-1, bluez, pipewire (>= 0.3.48), pipewire (<< 0.3.49), pipewire-pulse, wireplumber (>= 0.4), wireplumber (<< 0.5), pulseaudio-utils, libbluetooth3, libsbc1, libglib2.0-0, libdbus-1-3, libsystemd0, libudev1, libusb-1.0-0
+Depends: python3 (>= 3.10), python3-gi, python3-dbus, gir1.2-gtk-4.0, gir1.2-adw-1, binutils, bluez, pipewire (>= 0.3.48), pipewire (<< 0.3.49), pipewire-pulse, wireplumber (>= 0.4), wireplumber (<< 0.5), pulseaudio-utils, libbluetooth3, libsbc1, libglib2.0-0, libdbus-1-3, libsystemd0, libudev1, libusb-1.0-0
 Homepage: https://github.com/namnguyenit/NextSound
 Description: Bluetooth A2DP receiver for Ubuntu
  NextSound turns an Ubuntu 22.04 computer into a Bluetooth speaker.

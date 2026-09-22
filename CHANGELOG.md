@@ -2,6 +2,15 @@
 
 Mọi thay đổi đáng chú ý của NextSound được ghi lại tại đây. Dự án tuân theo [Semantic Versioning](https://semver.org/).
 
+## [0.1.1] - 2026-09-22
+
+### Fixed
+
+- Nhận diện đúng AAC/LDAC decoder được gói tại `/opt/nextsound/runtime`.
+- Đóng gói marker xác nhận AAC receiver buffer patch cho PipeWire 0.3.48.
+- `nextsound-doctor` phát hiện audio graph chỉ còn Dummy Output và tình trạng cạn inotify watches.
+- Trình cài không tự restart WirePlumber khi người dùng đã cạn inotify watches, tránh làm mất toàn bộ thiết bị âm thanh.
+
 ## [0.1.0] - 2026-09-22
 
 ### Added
@@ -24,4 +33,5 @@ Mọi thay đổi đáng chú ý của NextSound được ghi lại tại đây.
 - Trạng thái UI bị kẹt sau khi BlueZ transport biến mất.
 - Hoàn tác cấu hình khi WirePlumber restart thất bại.
 
+[0.1.1]: https://github.com/namnguyenit/NextSound/releases/tag/v0.1.1
 [0.1.0]: https://github.com/namnguyenit/NextSound/releases/tag/v0.1.0

@@ -11,7 +11,7 @@ Runtime nhúng gồm:
 Các SPA factory còn lại được liên kết tới gói PipeWire hệ thống. Không dùng runtime này với ABI PipeWire khác 0.3.48.
 
 ```bash
-./packaging/build-deb.sh 0.1.0-1
-dpkg-deb --info dist/nextsound_0.1.0-1_amd64.deb
-dpkg-deb --contents dist/nextsound_0.1.0-1_amd64.deb
+./packaging/build-deb.sh 0.1.1-1
+dpkg-deb --info dist/nextsound_0.1.1-1_amd64.deb
+dpkg-deb --contents dist/nextsound_0.1.1-1_amd64.deb
 ```

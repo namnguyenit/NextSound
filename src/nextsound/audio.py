@@ -6,6 +6,8 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from .health import inotify_watch_available
+
 
 @dataclass(frozen=True, slots=True)
 class AudioOutput:
@@ -134,6 +136,7 @@ class AudioBackend:
     @staticmethod
     def _codec_plugin_paths() -> list[str]:
         patterns = (
+            "/opt/nextsound/runtime/spa-0.2/bluez5/libspa-codec-bluez5-*.so",
             "/usr/lib*/spa-0.2/bluez5/libspa-codec-bluez5-*.so",
             "/usr/lib/*/spa-0.2/bluez5/libspa-codec-bluez5-*.so",
             "/usr/local/lib*/spa-0.2/bluez5/libspa-codec-bluez5-*.so",
@@ -145,7 +148,14 @@ class AudioBackend:
         paths = []
         for pattern in patterns:
             paths.extend(glob.glob(pattern))
-        return paths
+        return list(dict.fromkeys(paths))
+
+    @staticmethod
+    def _aac_receiver_markers() -> tuple[Path, ...]:
+        return (
+            Path("/opt/nextsound/runtime/aac-receiver-0.3.48"),
+            Path.home() / ".local/lib/nextsound/aac-receiver-0.3.48",
+        )
 
     @classmethod
     def available_bluetooth_codecs(cls) -> set[str]:
@@ -203,7 +213,7 @@ class AudioBackend:
             version = (0, 0, 0)
         if version >= (0, 3, 52):
             return True
-        return (Path.home() / ".local/lib/nextsound/aac-receiver-0.3.48").is_file()
+        return any(marker.is_file() for marker in cls._aac_receiver_markers())
 
     @classmethod
     def ldac_decoder_available(cls) -> bool:
@@ -290,6 +300,13 @@ class AudioBackend:
                     "PipeWire trên máy này chỉ có LDAC encoder, không có decoder để nhận từ điện thoại."
                 )
             raise RuntimeError(f"Chưa có decoder {codec} để nhận âm thanh từ điện thoại.")
+
+        inotify_ok, inotify_detail = inotify_watch_available()
+        if not inotify_ok:
+            raise RuntimeError(
+                "Không thể đổi codec an toàn vì "
+                f"{inotify_detail}. Đóng bớt VS Code/IDE rồi thử lại."
+            )
 
         selected_codec = codec.lower()
         # bluez5.codecs is global: it controls both phone -> computer and
