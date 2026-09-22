@@ -1,0 +1,1 @@
+AAC decoder backport with 64 KiB A2DP decode buffer for PipeWire 0.3.48.

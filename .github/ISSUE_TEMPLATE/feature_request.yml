@@ -1,0 +1,29 @@
+name: Đề xuất tính năng
+description: Đề xuất cải tiến cho NextSound
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Vấn đề cần giải quyết
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Giải pháp đề xuất
+    validations:
+      required: true
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Phạm vi
+      options:
+        - Giao diện
+        - Bluetooth / BlueZ
+        - PipeWire / codec
+        - Đóng gói / distro
+        - Khác
+    validations:
+      required: true

@@ -1,0 +1,39 @@
+name: Báo lỗi
+description: Báo một lỗi có thể tái hiện trong NextSound
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Cảm ơn bạn đã báo lỗi. Hãy xóa địa chỉ Bluetooth, token và dữ liệu nội bộ khỏi log.
+  - type: input
+    id: version
+    attributes:
+      label: Phiên bản NextSound
+      placeholder: v0.1.0
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Hệ điều hành và audio stack
+      placeholder: Ubuntu 22.04 amd64, PipeWire 0.3.48, WirePlumber 0.4
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Các bước tái hiện
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Kết quả mong đợi
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Kết quả nextsound-doctor đã ẩn dữ liệu nhạy cảm
+      render: text

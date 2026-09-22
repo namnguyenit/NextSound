@@ -1,0 +1,50 @@
+diff --git a/meson.build b/meson.build
+new file mode 100644
+index 0000000..facd2be
+--- /dev/null
++++ b/meson.build
+@@ -0,0 +1,44 @@
++project(
++  'libldacdec',
++  'c',
++  version: '0.1.0',
++  license: 'MIT',
++  meson_version: '>=0.61.1',
++  default_options: ['c_std=gnu11', 'warning_level=2'],
++)
++
++cc = meson.get_compiler('c')
++ldacdec_sources = files(
++  'libldacdec.c',
++  'bit_allocation.c',
++  'huffCodes.c',
++  'bit_reader.c',
++  'utility.c',
++  'imdct.c',
++  'spectrum.c',
++)
++
++ldacdec_library = shared_library(
++  'ldacBT_dec',
++  ldacdec_sources,
++  dependencies: cc.find_library('m'),
++  version: meson.project_version(),
++  soversion: '0',
++  install: true,
++)
++
++install_headers(
++  'ldacdec.h',
++  'log.h',
++  'imdct.h',
++  subdir: 'ldacdec',
++)
++
++pkg = import('pkgconfig')
++pkg.generate(
++  ldacdec_library,
++  name: 'ldacBT-dec',
++  filebase: 'ldacBT-dec',
++  description: 'Community reverse-engineered LDAC decoder',
++  subdirs: 'ldacdec',
++)

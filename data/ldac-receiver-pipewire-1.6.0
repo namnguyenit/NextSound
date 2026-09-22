@@ -1,0 +1,4 @@
+PipeWire 1.6.0 BlueZ backend with hegdi/libldacdec LDAC receiver support.
+PipeWire commit: 700cea78dbe7564131d51b21a7795e2567ee048a
+libldacdec commit: 7f3bd6cc1586b764b02f2e4f20b16c7ff18758b9
+Built with Meson and Ninja. Made by TrungCao.

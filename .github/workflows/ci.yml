@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-package:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-dbus python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 shellcheck
+
+      - name: Python tests
+        run: |
+          python3 -m compileall -q src tests
+          PYTHONPATH=src python3 -m unittest discover -s tests -v
+
+      - name: Shell checks
+        run: |
+          bash -n install.sh run-dev.sh scripts/*.sh packaging/*.sh packaging/debian/postinst packaging/debian/postrm
+          shellcheck install.sh run-dev.sh scripts/*.sh packaging/*.sh packaging/debian/postinst packaging/debian/postrm
+
+      - name: Build Debian package
+        run: ./packaging/build-deb.sh
+
+      - name: Inspect Debian package
+        run: |
+          dpkg-deb --info dist/nextsound_0.1.0-1_amd64.deb
+          dpkg-deb --contents dist/nextsound_0.1.0-1_amd64.deb
+          (cd dist && sha256sum --check SHA256SUMS)
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextsound-debian-amd64
+          path: |
+            dist/nextsound_0.1.0-1_amd64.deb
+            dist/SHA256SUMS

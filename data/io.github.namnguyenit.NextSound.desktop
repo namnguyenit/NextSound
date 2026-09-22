@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=NextSound
+X-GNOME-FullName=NextSound — Made by TrungCao
+Comment=Use this computer as a Bluetooth speaker
+Comment[vi]=Dùng máy tính này như một loa Bluetooth — Made by TrungCao
+Exec=nextsound
+Icon=io.github.namnguyenit.NextSound
+Terminal=false
+Type=Application
+Categories=AudioVideo;Audio;
+Keywords=Bluetooth;A2DP;Speaker;Receiver;Audio;
+StartupNotify=true
+DBusActivatable=false

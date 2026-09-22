@@ -1,0 +1,118 @@
+diff --git a/spa/plugins/bluez5/a2dp-codec-aac.c b/spa/plugins/bluez5/a2dp-codec-aac.c
+index c4ab7daf..33001b53 100644
+--- a/spa/plugins/bluez5/a2dp-codec-aac.c
++++ b/spa/plugins/bluez5/a2dp-codec-aac.c
+@@ -31,6 +31,7 @@
+ #include <spa/utils/dict.h>
+
+ #include <fdk-aac/aacenc_lib.h>
++#include <fdk-aac/aacdecoder_lib.h>
+
+ #include "rtp.h"
+ #include "a2dp-codecs.h"
+@@ -44,6 +45,7 @@ struct props {
+
+ struct impl {
+ 	HANDLE_AACENCODER aacenc;
++	HANDLE_AACDECODER aacdec;
+
+ 	struct rtp_header *header;
+
+@@ -412,11 +414,32 @@ static void *codec_init(const struct a2dp_codec *codec, uint32_t flags,
+
+ 	this->codesize = enc_info.frameLength * this->channels * this->samplesize;
+
++	this->aacdec = aacDecoder_Open(TT_MP4_LATM_MCP1, 1);
++	if (!this->aacdec) {
++		res = -EINVAL;
++		goto error;
++	}
++
++#ifdef AACDECODER_LIB_VL0
++	res = aacDecoder_SetParam(this->aacdec, AAC_PCM_MIN_OUTPUT_CHANNELS, this->channels);
++	if (res != AAC_DEC_OK)
++		goto error;
++	res = aacDecoder_SetParam(this->aacdec, AAC_PCM_MAX_OUTPUT_CHANNELS, this->channels);
++	if (res != AAC_DEC_OK)
++		goto error;
++#else
++	res = aacDecoder_SetParam(this->aacdec, AAC_PCM_OUTPUT_CHANNELS, this->channels);
++	if (res != AAC_DEC_OK)
++		goto error;
++#endif
++
+ 	return this;
+
+ error:
+-	if (this->aacenc)
++	if (this && this->aacenc)
+ 		aacEncClose(&this->aacenc);
++	if (this && this->aacdec)
++		aacDecoder_Close(this->aacdec);
+ 	free(this);
+ 	errno = -res;
+ 	return NULL;
+@@ -427,6 +450,8 @@ static void codec_deinit(void *data)
+ 	struct impl *this = data;
+ 	if (this->aacenc)
+ 		aacEncClose(&this->aacenc);
++	if (this->aacdec)
++		aacDecoder_Close(this->aacdec);
+ 	free(this);
+ }
+
+@@ -502,6 +527,45 @@ static int codec_encode(void *data,
+ 	return out_args.numInSamples * this->samplesize;
+ }
+
++static int codec_start_decode(void *data,
++		const void *src, size_t src_size, uint16_t *seqnum, uint32_t *timestamp)
++{
++	const struct rtp_header *header = src;
++	size_t header_size = sizeof(struct rtp_header);
++
++	if (src_size <= header_size)
++		return -EINVAL;
++	if (seqnum)
++		*seqnum = ntohs(header->sequence_number);
++	if (timestamp)
++		*timestamp = ntohl(header->timestamp);
++	return header_size;
++}
++
++static int codec_decode(void *data,
++		const void *src, size_t src_size,
++		void *dst, size_t dst_size, size_t *dst_out)
++{
++	struct impl *this = data;
++	uint data_size = (uint)src_size;
++	uint bytes_valid = data_size;
++	CStreamInfo *info;
++	int res;
++
++	res = aacDecoder_Fill(this->aacdec, (UCHAR **)&src, &data_size, &bytes_valid);
++	if (res != AAC_DEC_OK)
++		return -EINVAL;
++	res = aacDecoder_DecodeFrame(this->aacdec, dst,
++			dst_size / sizeof(INT_PCM), 0);
++	if (res != AAC_DEC_OK)
++		return -EINVAL;
++	info = aacDecoder_GetStreamInfo(this->aacdec);
++	if (!info)
++		return -EINVAL;
++	*dst_out = info->frameSize * info->numChannels * this->samplesize;
++	return src_size - bytes_valid;
++}
++
+ static int codec_abr_process (void *data, size_t unsent)
+ {
+ 	return -ENOTSUP;
+@@ -554,6 +618,8 @@ const struct a2dp_codec a2dp_codec_aac = {
+ 	.get_block_size = codec_get_block_size,
+ 	.start_encode = codec_start_encode,
+ 	.encode = codec_encode,
++	.start_decode = codec_start_decode,
++	.decode = codec_decode,
+ 	.abr_process = codec_abr_process,
+ 	.reduce_bitpool = codec_reduce_bitpool,
+ 	.increase_bitpool = codec_increase_bitpool,

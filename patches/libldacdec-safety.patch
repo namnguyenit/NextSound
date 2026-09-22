@@ -1,0 +1,32 @@
+diff --git a/imdct.h b/imdct.h
+index ed47b44..e6dab3d 100644
+--- a/imdct.h
++++ b/imdct.h
+@@ -10,6 +10,5 @@ typedef struct {
+ 	double* CosTable;
+ } Mdct;
+
+-void InitMdct();
++void InitMdct(void);
+ void RunImdct(Mdct* mdct, float* input, float* output);
+-
+diff --git a/libldacdec.c b/libldacdec.c
+index 7ef9939..775dc84 100644
+--- a/libldacdec.c
++++ b/libldacdec.c
+@@ -432,6 +432,9 @@ static int decodeFrame( frame_t *this, BitReaderCxt *br )
+     this->channelConfigId = ReadInt( br, LDAC_CHCONFIG2BITS );
+     this->frameLength = ReadInt( br, LDAC_FRAMELEN2BITS ) + 1;
+     this->frameStatus = ReadInt( br, LDAC_FRAMESTATBITS );
++
++    if( this->sampleRateId >= 4 || this->channelConfigId >= 3 )
++        return -1;
+
+     this->channelCount = channelConfigIdToChannelCount[this->channelConfigId];
+     this->frameSamplesPower = sampleRateIdToSamplesPower[this->sampleRateId];
+@@ -517,4 +520,5 @@ int ldacNullPacket( ldacdec_t *this, uint8_t *output, int *bytesUsed )
+     }
+
+     *bytesUsed = frame->frameLength + 3;
++    return 0;
+ }

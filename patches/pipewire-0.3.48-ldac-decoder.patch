@@ -1,0 +1,349 @@
+diff --git a/meson_options.txt b/meson_options.txt
+index 49d5b22..756de23 100644
+--- a/meson_options.txt
++++ b/meson_options.txt
+@@ -108,6 +108,10 @@ option('bluez5-codec-ldac',
+         description: 'Enable LDAC Sony open source codec implementation',
+         type: 'feature',
+         value: 'auto')
++option('bluez5-codec-ldac-dec',
++        description: 'Enable community LDAC decoder for A2DP sink',
++        type: 'feature',
++        value: 'auto')
+ option('bluez5-codec-aac',
+         description: 'Enable Fraunhofer FDK AAC open source codec implementation',
+         type: 'feature',
+diff --git a/spa/meson.build b/spa/meson.build
+index 1931d35..af70bfb 100644
+--- a/spa/meson.build
++++ b/spa/meson.build
+@@ -50,6 +50,8 @@ if get_option('spa-plugins').allowed()
+     summary({'LDAC': ldac_dep.found()}, bool_yn: true, section: 'Bluetooth audio codecs')
+     ldac_abr_dep = dependency('ldacBT-abr', required : get_option('bluez5-codec-ldac'))
+     summary({'LDAC ABR': ldac_abr_dep.found()}, bool_yn: true, section: 'Bluetooth audio codecs')
++    ldac_dec_dep = dependency('ldacBT-dec', required : get_option('bluez5-codec-ldac-dec'))
++    summary({'LDAC DEC': ldac_dec_dep.found()}, bool_yn: true, section: 'Bluetooth audio codecs')
+     aptx_dep = dependency('libfreeaptx', required : get_option('bluez5-codec-aptx'))
+     summary({'aptX': aptx_dep.found()}, bool_yn: true, section: 'Bluetooth audio codecs')
+     fdk_aac_dep = dependency('fdk-aac', required : get_option('bluez5-codec-aac'))
+diff --git a/spa/plugins/bluez5/a2dp-codec-ldac.c b/spa/plugins/bluez5/a2dp-codec-ldac.c
+index cb8dc55..f30bc24 100644
+--- a/spa/plugins/bluez5/a2dp-codec-ldac.c
++++ b/spa/plugins/bluez5/a2dp-codec-ldac.c
+@@ -39,6 +39,10 @@
+ #include <ldacBT_abr.h>
+ #endif
+
++#ifdef ENABLE_LDAC_DEC
++#include <ldacdec.h>
++#endif
++
+ #include "rtp.h"
+ #include "a2dp-codecs.h"
+
+@@ -64,8 +68,12 @@ struct impl {
+ 	HANDLE_LDAC_BT ldac;
+ #ifdef ENABLE_LDAC_ABR
+ 	HANDLE_LDAC_ABR ldac_abr;
++#endif
++#ifdef ENABLE_LDAC_DEC
++	ldacdec_t ldac_dec;
+ #endif
+ 	bool enable_abr;
++	bool decode;
+
+ 	struct rtp_header *header;
+ 	struct rtp_payload *payload;
+@@ -76,7 +84,12 @@ struct impl {
+ 	int fmt;
+ 	int codesize;
+ 	int frame_length;
++	int channels;
+ 	int frame_count;
++
++#ifdef ENABLE_LDAC_DEC
++	int decode_frames;
++#endif
+ };
+
+ static int codec_fill_caps(const struct a2dp_codec *codec, uint32_t flags, uint8_t caps[A2DP_MAX_CAPS_SIZE])
+@@ -398,15 +411,18 @@ static void *codec_init(const struct a2dp_codec *codec, uint32_t flags,
+ 	if (this == NULL)
+ 		goto error_errno;
+
+-	this->ldac = ldacBT_get_handle();
+-	if (this->ldac == NULL)
+-		goto error_errno;
++	this->decode = (flags & A2DP_CODEC_FLAG_SINK) != 0;
++	if (!this->decode) {
++		this->ldac = ldacBT_get_handle();
++		if (this->ldac == NULL)
++			goto error_errno;
+
+ #ifdef ENABLE_LDAC_ABR
+-	this->ldac_abr = ldac_ABR_get_handle();
+-	if (this->ldac_abr == NULL)
+-		goto error_errno;
++		this->ldac_abr = ldac_ABR_get_handle();
++		if (this->ldac_abr == NULL)
++			goto error_errno;
+ #endif
++	}
+
+ 	if (p == NULL || p->eqmid == LDACBT_EQMID_AUTO) {
+ 		this->eqmid = LDACBT_EQMID_SQ;
+@@ -419,6 +435,7 @@ static void *codec_init(const struct a2dp_codec *codec, uint32_t flags,
+ 	this->mtu = mtu;
+ 	this->frequency = info->info.raw.rate;
+ 	this->codesize = info->info.raw.channels * LDACBT_ENC_LSU;
++	this->channels = info->info.raw.channels;
+
+ 	switch (info->info.raw.format) {
+ 	case SPA_AUDIO_FORMAT_F32:
+@@ -442,26 +459,38 @@ static void *codec_init(const struct a2dp_codec *codec, uint32_t flags,
+ 		goto error;
+ 	}
+
+-	res = ldacBT_init_handle_encode(this->ldac,
+-			this->mtu,
+-			this->eqmid,
+-			conf->channel_mode,
+-			this->fmt,
+-			this->frequency);
+-	if (res < 0)
+-		goto error;
++	if (!this->decode) {
++		res = ldacBT_init_handle_encode(this->ldac,
++				this->mtu,
++				this->eqmid,
++				conf->channel_mode,
++				this->fmt,
++				this->frequency);
++		if (res < 0)
++			goto error;
++	}
+
+-#ifdef ENABLE_LDAC_ABR
+-	res = ldac_ABR_Init(this->ldac_abr, LDAC_ABR_INTERVAL_MS);
+-	if (res < 0)
+-		goto error;
++#ifdef ENABLE_LDAC_DEC
++	if (this->decode) {
++		res = ldacdecInit(&this->ldac_dec);
++		if (res < 0)
++			goto error;
++	}
++#endif
+
+-	res = ldac_ABR_set_thresholds(this->ldac_abr,
+-		LDAC_ABR_THRESHOLD_CRITICAL,
+-		LDAC_ABR_THRESHOLD_DANGEROUSTREND,
+-		LDAC_ABR_THRESHOLD_SAFETY_FOR_HQSQ);
+-	if (res < 0)
+-		goto error;
++#ifdef ENABLE_LDAC_ABR
++	if (!this->decode) {
++		res = ldac_ABR_Init(this->ldac_abr, LDAC_ABR_INTERVAL_MS);
++		if (res < 0)
++			goto error;
++
++		res = ldac_ABR_set_thresholds(this->ldac_abr,
++			LDAC_ABR_THRESHOLD_CRITICAL,
++			LDAC_ABR_THRESHOLD_DANGEROUSTREND,
++			LDAC_ABR_THRESHOLD_SAFETY_FOR_HQSQ);
++		if (res < 0)
++			goto error;
++	}
+ #endif
+
+ 	return this;
+@@ -469,10 +498,10 @@ static void *codec_init(const struct a2dp_codec *codec, uint32_t flags,
+ error_errno:
+ 	res = -errno;
+ error:
+-	if (this->ldac)
++	if (this && this->ldac)
+ 		ldacBT_free_handle(this->ldac);
+ #ifdef ENABLE_LDAC_ABR
+-	if (this->ldac_abr)
++	if (this && this->ldac_abr)
+ 		ldac_ABR_free_handle(this->ldac_abr);
+ #endif
+ 	free(this);
+@@ -497,6 +526,8 @@ static int codec_update_props(void *data, void *props)
+ 	struct impl *this = data;
+ 	struct props *p = props;
+ 	int res;
++	if (this->decode)
++		return 0;
+
+ 	if (p == NULL)
+ 		return 0;
+@@ -570,6 +601,115 @@ static int codec_encode(void *data,
+ 	return src_used;
+ }
+
++#ifdef ENABLE_LDAC_DEC
++static int codec_start_decode(void *data,
++		const void *src, size_t src_size, uint16_t *seqnum, uint32_t *timestamp)
++{
++	struct impl *this = data;
++	const struct rtp_header *header = src;
++	const struct rtp_payload *payload = SPA_PTROFF(src,
++			sizeof(struct rtp_header), struct rtp_payload);
++	size_t header_size = sizeof(struct rtp_header) + sizeof(struct rtp_payload);
++
++	if (src_size <= header_size)
++		return -EINVAL;
++	if (seqnum)
++		*seqnum = ntohs(header->sequence_number);
++	if (timestamp)
++		*timestamp = ntohl(header->timestamp);
++	this->decode_frames = payload->frame_count;
++	return header_size;
++}
++
++static int write_pcm(struct impl *this, const int16_t *pcm, int samples,
++		void *dst, size_t dst_size)
++{
++	uint8_t *out = dst;
++	int i;
++	int sample_size;
++
++	switch (this->fmt) {
++	case LDACBT_SMPL_FMT_S16: sample_size = 2; break;
++	case LDACBT_SMPL_FMT_S24: sample_size = 3; break;
++	case LDACBT_SMPL_FMT_S32:
++	case LDACBT_SMPL_FMT_F32: sample_size = 4; break;
++	default: return -EINVAL;
++	}
++	if ((size_t)samples * sample_size > dst_size)
++		return -ENOSPC;
++
++	for (i = 0; i < samples; i++) {
++		switch (this->fmt) {
++		case LDACBT_SMPL_FMT_S16:
++			memcpy(out + i * 2, &pcm[i], 2);
++			break;
++		case LDACBT_SMPL_FMT_S24: {
++			int32_t value = (int32_t)pcm[i] << 8;
++			out[i * 3] = value;
++			out[i * 3 + 1] = value >> 8;
++			out[i * 3 + 2] = value >> 16;
++			break;
++		}
++		case LDACBT_SMPL_FMT_S32: {
++			int32_t value = (int32_t)pcm[i] << 16;
++			memcpy(out + i * 4, &value, 4);
++			break;
++		}
++		case LDACBT_SMPL_FMT_F32: {
++			float value = (float)pcm[i] / 32768.0f;
++			memcpy(out + i * 4, &value, 4);
++			break;
++		}
++		}
++	}
++	return samples * sample_size;
++}
++
++static int codec_decode(void *data,
++		const void *src, size_t src_size,
++		void *dst, size_t dst_size, size_t *dst_out)
++{
++	struct impl *this = data;
++	uint8_t *to = dst;
++	size_t avail = dst_size;
++	size_t processed = 0;
++	int16_t pcm[MAX_FRAME_SAMPLES * 2];
++
++	*dst_out = 0;
++	for (; this->decode_frames > 0; --this->decode_frames) {
++		const uint8_t *frame = src;
++		int frame_size, consumed = 0, samples, written;
++
++		if (src_size < 3 || frame[0] != 0xaa ||
++				((frame[1] >> 5) & 0x07) > 3 ||
++				((frame[1] >> 3) & 0x03) > 2)
++			return -EINVAL;
++		frame_size = ((((int)frame[1] & 0x07) << 6) |
++				((int)frame[2] >> 2)) + 4;
++		if (frame_size < 4 || (size_t)frame_size > src_size)
++			return -EINVAL;
++		if (ldacDecode(&this->ldac_dec, (uint8_t *)src, pcm, &consumed) != 0 ||
++				consumed != frame_size ||
++				ldacdecGetSampleRate(&this->ldac_dec) != this->frequency ||
++				ldacdecGetChannelCount(&this->ldac_dec) != this->channels)
++			return -EINVAL;
++
++		samples = this->ldac_dec.frame.frameSamples * this->channels;
++		written = write_pcm(this, pcm, samples, to, avail);
++		if (written < 0)
++			return written;
++
++		src = SPA_PTROFF(src, consumed, const void);
++		src_size -= consumed;
++		processed += consumed;
++		to += written;
++		avail -= written;
++		*dst_out += written;
++	}
++	return processed;
++}
++#endif
++
+ const struct a2dp_codec a2dp_codec_ldac = {
+ 	.id = SPA_BLUETOOTH_AUDIO_CODEC_LDAC,
+ 	.codec_id = A2DP_CODEC_VENDOR,
+@@ -594,6 +734,10 @@ const struct a2dp_codec a2dp_codec_ldac = {
+ 	.abr_process = codec_abr_process,
+ 	.start_encode = codec_start_encode,
+ 	.encode = codec_encode,
++#ifdef ENABLE_LDAC_DEC
++	.start_decode = codec_start_decode,
++	.decode = codec_decode,
++#endif
+ 	.reduce_bitpool = codec_reduce_bitpool,
+ 	.increase_bitpool = codec_increase_bitpool,
+ };
+diff --git a/spa/plugins/bluez5/a2dp-codecs.h b/spa/plugins/bluez5/a2dp-codecs.h
+index 13da5bb..c00620e 100644
+--- a/spa/plugins/bluez5/a2dp-codecs.h
++++ b/spa/plugins/bluez5/a2dp-codecs.h
+@@ -66,6 +66,8 @@ extern const char *codec_plugin_factory_name;
+ #define A2DP_CODEC_DEFAULT_RATE		48000
+ #define A2DP_CODEC_DEFAULT_CHANNELS	2
+
++#define A2DP_CODEC_FLAG_SINK		(1 << 0)
++
+ struct a2dp_codec_audio_info {
+ 	uint32_t rate;
+ 	uint32_t channels;
+diff --git a/spa/plugins/bluez5/a2dp-source.c b/spa/plugins/bluez5/a2dp-source.c
+index 891db5e..fc26fd3 100644
+--- a/spa/plugins/bluez5/a2dp-source.c
++++ b/spa/plugins/bluez5/a2dp-source.c
+@@ -654,7 +654,7 @@ static int transport_start(struct impl *this)
+
+ 	this->transport_acquired = true;
+
+-	this->codec_data = this->codec->init(this->codec, 0,
++	this->codec_data = this->codec->init(this->codec, A2DP_CODEC_FLAG_SINK,
+ 			this->transport->configuration,
+ 			this->transport->configuration_len,
+ 			&port->current_format,
+diff --git a/spa/plugins/bluez5/meson.build b/spa/plugins/bluez5/meson.build
+index 4567b67..26d3bdc 100644
+--- a/spa/plugins/bluez5/meson.build
++++ b/spa/plugins/bluez5/meson.build
+@@ -101,6 +101,10 @@ if ldac_dep.found()
+     ldac_args += [ '-DENABLE_LDAC_ABR' ]
+     ldac_dep += ldac_abr_dep
+   endif
++  if ldac_dec_dep.found()
++    ldac_args += [ '-DENABLE_LDAC_DEC' ]
++    ldac_dep += ldac_dec_dep
++  endif
+   bluez_codec_ldac = shared_library('spa-codec-bluez5-ldac',
+     [ 'a2dp-codec-ldac.c', 'a2dp-codecs.c' ],
+     include_directories : [ configinc ],

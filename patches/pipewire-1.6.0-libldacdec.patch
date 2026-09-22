@@ -1,0 +1,137 @@
+diff --git a/spa/plugins/bluez5/a2dp-codec-ldac.c b/spa/plugins/bluez5/a2dp-codec-ldac.c
+index c807332..2da3b0c 100644
+--- a/spa/plugins/bluez5/a2dp-codec-ldac.c
++++ b/spa/plugins/bluez5/a2dp-codec-ldac.c
+@@ -20,10 +20,7 @@
+ #endif
+
+ #if defined(ENABLE_LDAC_DEC)
+-int ldacBT_decode(HANDLE_LDAC_BT handle, unsigned char *src, unsigned char *dst,
+-		LDACBT_SMPL_FMT_T fmt, int src_size, int *consumed, int *dst_out);
+-int ldacBT_init_handle_decode(HANDLE_LDAC_BT handle, int channel_mode, int frequency,
+-		int dummy1, int dummy2, int dummy3);
++#include <ldacdec.h>
+ #endif
+
+ #include "rtp.h"
+@@ -60,7 +57,7 @@ struct impl {
+ 	HANDLE_LDAC_ABR ldac_abr;
+ #endif
+ #ifdef ENABLE_LDAC_DEC
+-	HANDLE_LDAC_BT ldac_dec;
++	ldacdec_t ldac_dec;
+ #endif
+ 	bool enable_abr;
+
+@@ -73,6 +70,7 @@ struct impl {
+ 	int fmt;
+ 	int codesize;
+ 	int frame_length;
++	int channels;
+ 	int frame_count;
+
+ 	struct dec_data d;
+@@ -173,13 +171,20 @@ static int codec_enum_config(const struct media_codec *codec, uint32_t flags,
+ 	spa_pod_builder_add(b,
+ 			SPA_FORMAT_mediaType,      SPA_POD_Id(SPA_MEDIA_TYPE_audio),
+ 			SPA_FORMAT_mediaSubtype,   SPA_POD_Id(SPA_MEDIA_SUBTYPE_raw),
+-			SPA_FORMAT_AUDIO_format,   SPA_POD_CHOICE_ENUM_Id(5,
+-								SPA_AUDIO_FORMAT_F32,
+-								SPA_AUDIO_FORMAT_F32,
+-								SPA_AUDIO_FORMAT_S32,
+-								SPA_AUDIO_FORMAT_S24,
+-								SPA_AUDIO_FORMAT_S16),
+ 			0);
++	if (flags & MEDIA_CODEC_FLAG_SINK)
++		spa_pod_builder_add(b,
++				SPA_FORMAT_AUDIO_format, SPA_POD_Id(SPA_AUDIO_FORMAT_S16),
++				0);
++	else
++		spa_pod_builder_add(b,
++				SPA_FORMAT_AUDIO_format, SPA_POD_CHOICE_ENUM_Id(5,
++						SPA_AUDIO_FORMAT_F32,
++						SPA_AUDIO_FORMAT_F32,
++						SPA_AUDIO_FORMAT_S32,
++						SPA_AUDIO_FORMAT_S24,
++						SPA_AUDIO_FORMAT_S16),
++				0);
+ 	spa_pod_builder_prop(b, SPA_FORMAT_AUDIO_rate, 0);
+
+ 	spa_pod_builder_push_choice(b, &f[1], SPA_CHOICE_None, 0);
+@@ -464,12 +469,6 @@ static void *codec_init(const struct media_codec *codec, uint32_t flags,
+ 	if (this->ldac == NULL)
+ 		goto error_errno;
+
+-#ifdef ENABLE_LDAC_DEC
+-	this->ldac_dec = ldacBT_get_handle();
+-	if (this->ldac_dec == NULL)
+-		goto error_errno;
+-#endif
+-
+ #ifdef ENABLE_LDAC_ABR
+ 	this->ldac_abr = ldac_ABR_get_handle();
+ 	if (this->ldac_abr == NULL)
+@@ -487,6 +486,7 @@ static void *codec_init(const struct media_codec *codec, uint32_t flags,
+ 	this->mtu = mtu;
+ 	this->frequency = info->info.raw.rate;
+ 	this->codesize = info->info.raw.channels * LDACBT_ENC_LSU;
++	this->channels = info->info.raw.channels;
+
+ 	switch (info->info.raw.format) {
+ 	case SPA_AUDIO_FORMAT_F32:
+@@ -527,13 +527,9 @@ static void *codec_init(const struct media_codec *codec, uint32_t flags,
+ 	}
+
+ #ifdef ENABLE_LDAC_DEC
+-	res = ldacBT_init_handle_decode(this->ldac_dec,
+-			conf->channel_mode,
+-			this->frequency, 0, 0, 0);
++	res = ldacdecInit(&this->ldac_dec);
+ 	if (res < 0) {
+-		res = ldacBT_get_error_code(this->ldac_dec);
+-		spa_log_error(log_, "LDAC decoder initialization failed: %s (%d)",
+-				ldac_strerror(LDACBT_API_ERR(res)), res);
++		spa_log_error(log_, "libldacdec initialization failed: %d", res);
+ 		res = -EIO;
+ 		goto error;
+ 	}
+@@ -694,18 +690,36 @@ static int codec_decode(void *data,
+ 	*dst_out = 0;
+
+ 	for (; this->d.frames > 0; --this->d.frames) {
+-		int consumed;
++		int consumed = 0;
+ 		int written;
++		int frame_size;
++		const uint8_t *frame = src;
+
+ 		if (avail < this->d.max_frame_bytes)
+ 			return -EINVAL;
+
+-		if (ldacBT_decode(this->ldac_dec, (void *)src, to, this->fmt, src_size,
+-						&consumed, &written) != 0) {
++		/* The community decoder has no input-size argument. Validate the
++		 * complete 24-bit LDAC header and encoded frame boundary first. */
++		if (src_size < 3 || frame[0] != 0xaa ||
++				((frame[1] >> 5) & 0x07) > 3 ||
++				((frame[1] >> 3) & 0x03) > 2)
++			return -EINVAL;
++		frame_size = ((((int)frame[1] & 0x07) << 6) |
++				((int)frame[2] >> 2)) + 4;
++		if (frame_size < 4 || (size_t)frame_size > src_size)
++			return -EINVAL;
++
++		if (this->fmt != LDACBT_SMPL_FMT_S16 ||
++				ldacDecode(&this->ldac_dec, (uint8_t *)src,
++						(int16_t *)to, &consumed) != 0) {
+ 			return -EINVAL;
+ 		}
+-		if (consumed < 0 || (size_t)consumed > src_size)
++		if (consumed != frame_size ||
++				ldacdecGetSampleRate(&this->ldac_dec) != this->frequency ||
++				ldacdecGetChannelCount(&this->ldac_dec) != this->channels)
+ 			return -EINVAL;
++		written = this->ldac_dec.frame.frameSamples * this->channels *
++				sizeof(int16_t);
+ 		if (written < 0 || (size_t)written > avail)
+ 			return -EINVAL;

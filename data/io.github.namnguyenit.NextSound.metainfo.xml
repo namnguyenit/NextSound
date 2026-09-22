@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.namnguyenit.NextSound</id>
+  <name>NextSound</name>
+  <developer_name>Made by TrungCao</developer_name>
+  <summary>Use your Linux computer as a Bluetooth speaker</summary>
+  <summary xml:lang="vi">Dùng máy tính Linux như một loa Bluetooth</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>NextSound opens an A2DP receiver connection so audio from a paired phone plays through the computer's current speakers.</p>
+    <p>Made by TrungCao.</p>
+  </description>
+  <url type="homepage">https://github.com/namnguyenit/NextSound</url>
+  <url type="bugtracker">https://github.com/namnguyenit/NextSound/issues</url>
+  <launchable type="desktop-id">io.github.namnguyenit.NextSound.desktop</launchable>
+  <provides>
+    <binary>nextsound</binary>
+  </provides>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-09-22"/>
+  </releases>
+</component>

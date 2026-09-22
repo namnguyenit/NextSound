@@ -1,0 +1,106 @@
+diff --git a/spa/plugins/bluez5/bluez5-dbus.c b/spa/plugins/bluez5/bluez5-dbus.c
+index 4f65dfc..3b8c164 100644
+--- a/spa/plugins/bluez5/bluez5-dbus.c
++++ b/spa/plugins/bluez5/bluez5-dbus.c
+@@ -118,6 +118,7 @@ struct spa_bt_monitor {
+ 	enum backend_selection backend_selection;
+
+ 	struct spa_dict enabled_codecs;
++	char *sink_codec;
+
+ 	unsigned int connection_info_supported:1;
+ 	unsigned int dummy_avrcp_player:1;
+@@ -475,6 +476,12 @@ static bool is_a2dp_codec_enabled(struct spa_bt_monitor *monitor, const struct a
+ 	return spa_dict_lookup(&monitor->enabled_codecs, codec->name) != NULL;
+ }
+
++static bool is_a2dp_sink_codec_enabled(struct spa_bt_monitor *monitor,
++		const struct a2dp_codec *codec)
++{
++	return monitor->sink_codec == NULL || spa_streq(monitor->sink_codec, codec->name);
++}
++
+ static DBusHandlerResult endpoint_select_configuration(DBusConnection *conn, DBusMessage *m, void *userdata)
+ {
+ 	struct spa_bt_monitor *monitor = userdata;
+@@ -3332,7 +3339,8 @@ static int adapter_register_endpoints(struct spa_bt_adapter *a)
+ 		                                   codec)))
+ 			goto out;
+
+-		if ((err = bluez_register_endpoint(monitor, a->path,
++		if (is_a2dp_sink_codec_enabled(monitor, codec) &&
++				(err = bluez_register_endpoint(monitor, a->path,
+ 						   A2DP_SINK_ENDPOINT,
+ 		                                   SPA_BT_UUID_A2DP_SINK,
+ 		                                   codec)))
+@@ -3441,7 +3449,7 @@ static DBusHandlerResult object_manager_handler(DBusConnection *c, DBusMessage *
+ 			if (caps_size < 0)
+ 				continue;
+
+-			if (codec->decode != NULL) {
++			if (codec->decode != NULL && is_a2dp_sink_codec_enabled(monitor, codec)) {
+ 				ret = a2dp_codec_to_endpoint(codec, A2DP_SINK_ENDPOINT, &endpoint);
+ 				if (ret == 0) {
+ 					spa_log_info(monitor->log, "register A2DP sink codec %s: %s", a2dp_codecs[i]->name, endpoint);
+@@ -3527,7 +3535,8 @@ static int register_media_application(struct spa_bt_monitor * monitor)
+ 			continue;
+
+ 		register_a2dp_endpoint(monitor, codec, A2DP_SOURCE_ENDPOINT);
+-		register_a2dp_endpoint(monitor, codec, A2DP_SINK_ENDPOINT);
++		if (is_a2dp_sink_codec_enabled(monitor, codec))
++			register_a2dp_endpoint(monitor, codec, A2DP_SINK_ENDPOINT);
+ 	}
+
+ 	return 0;
+@@ -3551,7 +3560,8 @@ static void unregister_media_application(struct spa_bt_monitor * monitor)
+ 			free(object_path);
+ 		}
+
+-		ret = a2dp_codec_to_endpoint(codec, A2DP_SINK_ENDPOINT, &object_path);
++		ret = is_a2dp_sink_codec_enabled(monitor, codec) ?
++			a2dp_codec_to_endpoint(codec, A2DP_SINK_ENDPOINT, &object_path) : -ENOENT;
+ 		if (ret == 0) {
+ 			dbus_connection_unregister_object_path(monitor->conn, object_path);
+ 			free(object_path);
+@@ -4254,6 +4264,8 @@ static int impl_clear(struct spa_handle *handle)
+ 	free((void*)monitor->enabled_codecs.items);
+ 	spa_zero(monitor->enabled_codecs);
+
++	free(monitor->sink_codec);
++	monitor->sink_codec = NULL;
+ 	dbus_connection_unref(monitor->conn);
+ 	spa_dbus_connection_destroy(monitor->dbus_connection);
+ 	monitor->dbus_connection = NULL;
+@@ -4426,6 +4438,7 @@ impl_init(const struct spa_handle_factory *factory,
+ 	this->a2dp_codecs = NULL;
+ 	this->quirks = NULL;
+ 	this->conn = NULL;
++	this->sink_codec = NULL;
+ 	this->dbus_connection = NULL;
+
+ 	this->a2dp_codecs = load_a2dp_codecs(this->plugin_loader, this->log);
+@@ -4476,6 +4489,24 @@ impl_init(const struct spa_handle_factory *factory,
+ 		goto fail;
+
+ 	this->default_audio_info.rate = A2DP_CODEC_DEFAULT_RATE;
++	if (info != NULL) {
++		const char *name = spa_dict_lookup(info, "bluez5.sink-codec");
++		if (name != NULL) {
++			int i;
++			for (i = 0; this->a2dp_codecs[i] != NULL; i++) {
++				const struct a2dp_codec *codec = this->a2dp_codecs[i];
++				if (spa_streq(name, codec->name) && is_a2dp_codec_enabled(this, codec)) {
++					this->sink_codec = strdup(name);
++					if (this->sink_codec == NULL) {
++						res = -errno;
++						goto fail;
++					}
++					spa_log_info(this->log, "restricting A2DP sink endpoints to codec %s", name);
++					break;
++				}
++			}
++		}
++	}
+ 	this->default_audio_info.channels = A2DP_CODEC_DEFAULT_CHANNELS;
+
+ 	this->backend_selection = BACKEND_NATIVE;

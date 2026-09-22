@@ -1,0 +1,2 @@
+/etc/wireplumber/bluetooth.lua.d/51-nextsound.lua
+/etc/wireplumber/wireplumber.conf.d/51-nextsound.conf

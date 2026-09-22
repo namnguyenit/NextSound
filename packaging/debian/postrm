@@ -1,0 +1,20 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+    for runtime_dir in /run/user/[0-9]*; do
+        [ -d "$runtime_dir" ] || continue
+        uid="${runtime_dir##*/}"
+        user="$(getent passwd "$uid" | cut -d: -f1)"
+        [ -n "$user" ] || continue
+        runuser -u "$user" -- env \
+            XDG_RUNTIME_DIR="$runtime_dir" \
+            DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" \
+            systemctl --user daemon-reload >/dev/null 2>&1 || true
+        runuser -u "$user" -- env \
+            XDG_RUNTIME_DIR="$runtime_dir" \
+            DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" \
+            systemctl --user try-restart wireplumber >/dev/null 2>&1 || true
+    done
+fi
+exit 0
